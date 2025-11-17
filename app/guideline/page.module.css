@@ -1,0 +1,75 @@
+.container {
+  padding: 20px;
+  color: #333;
+  line-height: 1.6;
+}
+
+/* Title */
+.title {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+/* Section Title */
+.sectionTitle {
+  font-size: 18px;
+  font-weight: 600;
+  margin-top: 32px;
+  margin-bottom: 12px;
+}
+
+/* Description paragraph */
+.paragraph {
+  font-size: 15px;
+  margin-bottom: 16px;
+  color: #555;
+}
+
+/* Table base style */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  margin-bottom: 20px;
+}
+
+.row {
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.headRow {
+  background-color: #f8f8f8;
+}
+
+.col {
+  padding: 10px 8px;
+  font-size: 14px;
+}
+
+.head {
+  font-weight: 600;
+}
+
+/* Checklist items */
+.checklist {
+  margin-top: 12px;
+  padding-left: 4px;
+}
+
+.checkItem {
+  margin-bottom: 10px;
+  display: flex;
+  align-items: flex-start;
+  font-size: 14px;
+}
+
+.bullet {
+  margin-right: 8px;
+  font-weight: 700;
+}
+
+/* Extra spacing for group separation */
+.section {
+  margin-bottom: 40px;
+}

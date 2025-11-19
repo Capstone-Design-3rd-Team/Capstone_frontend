@@ -1,5 +1,5 @@
-// app/result/sessionStorage.ts
-import type { StoredSession, StoredSessionMap } from "./sessionTypes";
+// app/lib/session/sessionStorage.ts
+import type { StoredSession, StoredSessionMap } from "./sessionTypes"
 
 const STORAGE_KEY = "uxEvalSessions";
 

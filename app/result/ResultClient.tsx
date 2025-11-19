@@ -11,8 +11,8 @@ import { generateAnalysisPdf } from "./generatePdf";
 
 // ===== 프록시 기반 서버 주소 =====
 // Vercel 배포 시 /api-proxy 로 자동 대체됨.
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api-proxy";
-const MOCK_MODE = false;
+const API_BASE = "/api-proxy";
+const MOCK_MODE = false; 
 
 
 // ─────────────────────────────────────────────────────────────

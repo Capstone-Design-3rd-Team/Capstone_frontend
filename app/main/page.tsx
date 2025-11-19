@@ -52,7 +52,8 @@ export default function MainPage() {
     try {
       setLoading(true);
 
-      const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const baseUrl = "/api-proxy";
+
       if (!baseUrl) {
         setError("백엔드 주소(NEXT_PUBLIC_API_BASE_URL)가 설정되어 있지 않습니다.");
         return;

@@ -1,0 +1,79 @@
+{
+  "task_id": "mock-task-123",
+  "website_id": "mock-site-001",
+  "results": {
+    "summary": {
+      "color": "green",
+      "final_score": 87.5,
+      "severity_level": "Low",
+      "accessibility_level": "A"
+    },
+    "scroll_info": {
+      "vertical_scroll": true,
+      "horizontal_scroll": false
+    },
+    "analysis_info": {
+      "url": "https://example.com",
+      "s3_url": "https://mock-s3-url/report.png",
+      "analysis_date": "2025-01-01T10:00:00Z",
+      "screenshot_path": "/local/mock/screenshot.png"
+    },
+    "button_analysis": {
+      "crawled_button_count": 34,
+      "detected_button_count": 31,
+      "button_count_difference": 3
+    },
+    "detailed_scores": {
+      "button_detection": {
+        "color": "green",
+        "level": "High",
+        "score": 90,
+        "weight": "1.0",
+        "description": "버튼 탐지 정확도가 매우 높음"
+      },
+      "button_visual_feedback": {
+        "color": "yellow",
+        "level": "Medium",
+        "score": 70,
+        "weight": "1.0",
+        "description": "일부 버튼 클릭 피드백이 부족함"
+      },
+      "button_size": {
+        "color": "yellow",
+        "level": "Medium",
+        "score": 65,
+        "weight": "0.7",
+        "description": "버튼 크기가 일부 작은 편"
+      },
+      "button_contrast": {
+        "color": "green",
+        "level": "High",
+        "score": 92,
+        "weight": "1.2",
+        "description": "명암 대비가 우수함"
+      },
+      "font_size": {
+        "color": "yellow",
+        "level": "Medium",
+        "score": 72,
+        "weight": "1.0",
+        "description": "일부 텍스트 크기가 작음"
+      },
+      "overall_contrast": {
+        "color": "green",
+        "level": "High",
+        "score": 88,
+        "weight": "0.8",
+        "description": "전반적으로 대비가 우수함"
+      },
+      "korean_ratio": {
+        "color": "green",
+        "level": "High",
+        "score": 95,
+        "weight": "0.5",
+        "description": "한국어 비율이 충분함"
+      }
+    },
+    "recommendations": []
+  }
+}

@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/api-proxy/:path*",
-        destination: "http://15.164.29.199:8080/:path*", // HTTP라도 OK (Vercel → 백엔드)
+        destination: "http://15.164.29.199:8080/:path*", 
       },
     ];
   },

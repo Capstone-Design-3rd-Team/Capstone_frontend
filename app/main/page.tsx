@@ -106,6 +106,7 @@ export default function MainPage() {
     } catch (err) {
       console.error(err);
       setError("서버와 통신 중 오류가 발생했습니다.");
+      return;
     } finally {
       setLoading(false);
     }

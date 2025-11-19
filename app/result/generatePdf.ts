@@ -173,13 +173,21 @@ export async function generateAnalysisPdf(data: AnalysisResultEnvelope) {
   // --------------------------------------------------------------------
   const pdfBytes = await pdfDoc.save();
 
-  const blob = new Blob([pdfBytes], { type: "application/pdf" });
-  const url = URL.createObjectURL(blob);
+  // SharedArrayBuffer 문제 해결 → 항상 ArrayBuffer로 변환
+  const safeBuffer = new ArrayBuffer(pdfBytes.length);
+  const view = new Uint8Array(safeBuffer);
+  view.set(pdfBytes);
 
+  // Blob 생성
+  const blob = new Blob([safeBuffer], {
+    type: "application/pdf",
+  });
+
+  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = "ux-evaluation-report.pdf";
   a.click();
-
   URL.revokeObjectURL(url);
+
 }

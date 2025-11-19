@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import styles from "./page.module.css";
 
 interface CrawlStartResponse {
@@ -101,15 +102,21 @@ export default function MainPage() {
           />
         </label>
 
-        <button
-          type="submit"
-          className={styles.button}
-          disabled={loading}
-        >
-          {loading ? "크롤링 시작 중..." : "분석 시작"}
-        </button>
-      </form>
+        <div className={styles.buttonRow}>
+          <button
+            type="submit"
+            className={styles.buttonPrimary}
+            disabled={loading}
+          >
+            {loading ? "크롤링 시작 중..." : "분석 시작"}
+          </button>
 
+          <Link href="/guideline" className={styles.buttonSecondary}>
+            가이드라인 보러가기
+          </Link>
+        </div>
+      </form>
+      
       {error && <p className={styles.error}>{error}</p>}
       {infoMessage && <p className={styles.info}>{infoMessage}</p>}
 

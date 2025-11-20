@@ -27,7 +27,13 @@ interface SseProgressDto {
   message?: string;
 }
 
-export default function ResultClient({ websiteId, mainUrl }: { websiteId?: string; mainUrl?: string }) {
+export default function ResultClient({
+  websiteId,
+  mainUrl,
+}: {
+  websiteId?: string;
+  mainUrl?: string;
+}) {
   const [session, setSession] = useState<StoredSession | null>(null);
   const [statusLabel, setStatusLabel] = useState("초기화 중…");
   const [loading, setLoading] = useState(true);
@@ -37,7 +43,7 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
   // 🔥 SSE 객체 보관 (중복 연결 방지)
   const sseRef = useRef<EventSource | null>(null);
 
-  // 🔥 보고서 재시도 방지 (중복 fetch 금지)
+  // 🔥 보고서 재시도 중 여부 (중복 fetch 방지)
   const fetchingReportRef = useRef(false);
 
   // ------------------------------------------------------------------
@@ -68,7 +74,8 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
       return;
     }
 
-    const clientId = window.localStorage.getItem("uxEvalClientId") || "(unknown-client)";
+    const clientId =
+      window.localStorage.getItem("uxEvalClientId") || "(unknown-client)";
 
     const newSession: StoredSession = {
       websiteId,
@@ -89,6 +96,7 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
   // 2) 최종 보고서 조회 (재시도 포함)
   // ------------------------------------------------------------------
   const fetchFinalReport = async (websiteId: string, retry = 0) => {
+    // 이미 요청 중이면 추가 요청 방지
     if (fetchingReportRef.current) return;
     fetchingReportRef.current = true;
 
@@ -97,15 +105,18 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
 
       const res = await fetch(`https://www.webaudit.cloud/api/reports/${websiteId}`);
 
-      if (!res.ok) {
-        // 404 → DB 반영이 아직 안끝난 경우
-        if (retry < 5) {
-          console.log("⏳ 보고서 없음 → 재시도");
+      // 아직 보고서가 안 만들어진 상태일 수 있음
+      if (res.status === 404) {
+        if (retry < 20) {
+          console.log("⏳ 보고서 없음 → 재시도 예정");
           fetchingReportRef.current = false;
           setTimeout(() => fetchFinalReport(websiteId, retry + 1), 1500);
           return;
         }
+        throw new Error("보고서가 존재하지 않습니다.");
+      }
 
+      if (!res.ok) {
         throw new Error("보고서 조회 실패");
       }
 
@@ -122,6 +133,7 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
     } catch (err) {
       console.error("❌ 최종 보고서 조회 오류:", err);
       setError("최종 보고서 조회 실패 (재시도 필요)");
+      // 실패했지만 더 이상 자동 재시도 안 함
     }
   };
 
@@ -129,19 +141,19 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
   // 3) SSE 연결 (중복 방지)
   // ------------------------------------------------------------------
   useEffect(() => {
-    if (!session) return;
-    if (session.status === "DONE" && session.resultJson) return;
+    if (!websiteId) return;
+    if (session?.status === "DONE") return; // 이미 끝난 세션이면 연결 안 함
+    if (sseRef.current) return; // 이미 연결된 경우 재연결 방지
 
-    const clientId = session.clientSessionId;
-    if (!clientId) return;
+    const clientId = session?.clientSessionId;
+    if (!clientId || clientId === "(unknown-client)") return;
 
-    // 🔥 이미 연결된 SSE가 있으면 만들지 않음
-    if (sseRef.current) return;
+    const url = `https://www.webaudit.cloud/api/sse/connect/${encodeURIComponent(
+      clientId
+    )}`;
+    console.log("🔌 SSE 연결 시도:", url);
 
-    const sseUrl = `https://www.webaudit.cloud/api/sse/connect/${clientId}`;
-    console.log("🔌 SSE 연결:", sseUrl);
-
-    const es = new EventSource(sseUrl);
+    const es = new EventSource(url);
     sseRef.current = es;
 
     es.onopen = () => {
@@ -150,36 +162,46 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
       setLoading(false);
     };
 
-    es.onerror = () => {
-      console.warn("⚠️ SSE 오류 발생");
-    };
-
     es.addEventListener("progress", (event) => {
       const dto = JSON.parse((event as MessageEvent).data) as SseProgressDto;
 
-      updateSession({ status: dto.stage as SessionStatus, progress: dto.percentage ?? 0 });
+      updateSession({
+        status: dto.stage as SessionStatus,
+        progress: dto.percentage ?? 0,
+      });
+
       setStatusLabel(dto.message ?? labelMap[dto.stage]);
 
       if (dto.percentage === 100) {
-        console.log("➡️ progress=100 → 보고서 조회");
-        fetchFinalReport(session.websiteId);
+        console.log("➡️ progress=100 → 보고서 직접 조회 실행");
+        fetchingReportRef.current = false; // 새로 조회 허용
+        fetchFinalReport(websiteId, 0);
       }
     });
 
     es.addEventListener("complete", (event) => {
-      const data = JSON.parse((event as MessageEvent).data);
-      console.log("🎉 complete 이벤트:", data);
+      const data = JSON.parse((event as MessageEvent).data) as {
+        websiteId: string;
+        status: string;
+      };
+      console.log("🎉 SSE complete 수신:", data);
 
-      fetchFinalReport(data.websiteId);
+      fetchingReportRef.current = false; // 새로 조회 허용
+      fetchFinalReport(data.websiteId, 0);
       es.close();
       sseRef.current = null;
     });
+
+    es.onerror = () => {
+      console.warn("⚠️ SSE error");
+    };
 
     return () => {
       es.close();
       sseRef.current = null;
     };
-  }, [session]);
+    // 🔥 session.clientSessionId 까지만 의존 → 로딩 후 딱 한 번만 실행
+  }, [websiteId, session?.clientSessionId]);
 
   // ------------------------------------------------------------------
   // PDF 다운로드
@@ -223,13 +245,18 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
 
         <div className={styles.progressWrapper}>
           <div className={styles.progressBarOuter}>
-            <div className={styles.progressBarInner} style={{ width: `${session.progress}%` }} />
+            <div
+              className={styles.progressBarInner}
+              style={{ width: `${session.progress}%` }}
+            />
           </div>
           <span className={styles.progressText}>{session.progress}%</span>
         </div>
 
         {loading && <p className={styles.info}>서버와 동기화 중…</p>}
-        {sseConnected && !isDone && !isError && <p className={styles.info}>실시간 분석 진행 중…</p>}
+        {sseConnected && !isDone && !isError && (
+          <p className={styles.info}>실시간 분석 진행 중…</p>
+        )}
         {error && <p className={styles.error}>{error}</p>}
       </section>
 

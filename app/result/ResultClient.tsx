@@ -27,23 +27,17 @@ interface SseProgressDto {
   message?: string;
 }
 
-export default function ResultClient({
-  websiteId,
-  mainUrl,
-}: {
-  websiteId?: string;
-  mainUrl?: string;
-}) {
+export default function ResultClient({ websiteId, mainUrl }: { websiteId?: string; mainUrl?: string }) {
   const [session, setSession] = useState<StoredSession | null>(null);
   const [statusLabel, setStatusLabel] = useState("초기화 중…");
   const [loading, setLoading] = useState(true);
   const [sseConnected, setSseConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 🔥 SSE 객체 보관 (중복 연결 방지)
+  // SSE 객체 저장
   const sseRef = useRef<EventSource | null>(null);
 
-  // 🔥 보고서 재시도 중 여부 (중복 fetch 방지)
+  // 보고서 중복 요청 방지
   const fetchingReportRef = useRef(false);
 
   // ------------------------------------------------------------------
@@ -57,7 +51,7 @@ export default function ResultClient({
   };
 
   // ------------------------------------------------------------------
-  // 1) 초기 세션 로드
+  // 초기 세션 로드
   // ------------------------------------------------------------------
   useEffect(() => {
     if (!websiteId) {
@@ -74,8 +68,7 @@ export default function ResultClient({
       return;
     }
 
-    const clientId =
-      window.localStorage.getItem("uxEvalClientId") || "(unknown-client)";
+    const clientId = window.localStorage.getItem("uxEvalClientId") || "(unknown-client)";
 
     const newSession: StoredSession = {
       websiteId,
@@ -93,10 +86,9 @@ export default function ResultClient({
   }, [websiteId, mainUrl]);
 
   // ------------------------------------------------------------------
-  // 2) 최종 보고서 조회 (재시도 포함)
+  // 보고서 조회
   // ------------------------------------------------------------------
   const fetchFinalReport = async (websiteId: string, retry = 0) => {
-    // 이미 요청 중이면 추가 요청 방지
     if (fetchingReportRef.current) return;
     fetchingReportRef.current = true;
 
@@ -105,10 +97,9 @@ export default function ResultClient({
 
       const res = await fetch(`https://www.webaudit.cloud/api/reports/${websiteId}`);
 
-      // 아직 보고서가 안 만들어진 상태일 수 있음
       if (res.status === 404) {
         if (retry < 20) {
-          console.log("⏳ 보고서 없음 → 재시도 예정");
+          console.log("⏳ 보고서 없음 → 재시도");
           fetchingReportRef.current = false;
           setTimeout(() => fetchFinalReport(websiteId, retry + 1), 1500);
           return;
@@ -116,9 +107,7 @@ export default function ResultClient({
         throw new Error("보고서가 존재하지 않습니다.");
       }
 
-      if (!res.ok) {
-        throw new Error("보고서 조회 실패");
-      }
+      if (!res.ok) throw new Error("보고서 조회 실패");
 
       const finalReport: AnalysisResultEnvelope = await res.json();
 
@@ -131,27 +120,24 @@ export default function ResultClient({
       setStatusLabel("분석 완료");
       console.log("📘 최종 보고서 로드 완료");
     } catch (err) {
-      console.error("❌ 최종 보고서 조회 오류:", err);
-      setError("최종 보고서 조회 실패 (재시도 필요)");
-      // 실패했지만 더 이상 자동 재시도 안 함
+      console.error("❌ 보고서 조회 오류:", err);
+      setError("최종 보고서 조회 실패");
     }
   };
 
   // ------------------------------------------------------------------
-  // 3) SSE 연결 (중복 방지)
+  // SSE 연결
   // ------------------------------------------------------------------
   useEffect(() => {
     if (!websiteId) return;
-    if (session?.status === "DONE") return; // 이미 끝난 세션이면 연결 안 함
-    if (sseRef.current) return; // 이미 연결된 경우 재연결 방지
+    if (session?.status === "DONE") return;
+    if (sseRef.current) return;
 
     const clientId = session?.clientSessionId;
     if (!clientId || clientId === "(unknown-client)") return;
 
-    const url = `https://www.webaudit.cloud/api/sse/connect/${encodeURIComponent(
-      clientId
-    )}`;
-    console.log("🔌 SSE 연결 시도:", url);
+    const url = `https://www.webaudit.cloud/api/sse/connect/${encodeURIComponent(clientId)}`;
+    console.log("🔌 SSE 연결:", url);
 
     const es = new EventSource(url);
     sseRef.current = es;
@@ -162,45 +148,41 @@ export default function ResultClient({
       setLoading(false);
     };
 
-    es.addEventListener("progress", (event) => {
-      const dto = JSON.parse((event as MessageEvent).data) as SseProgressDto;
+  es.addEventListener("progress", (event) => {
+    const dto = JSON.parse(event.data) as SseProgressDto;
 
-      updateSession({
-        status: dto.stage as SessionStatus,
-        progress: dto.percentage ?? 0,
-      });
-
-      setStatusLabel(dto.message ?? labelMap[dto.stage]);
-
-      if (dto.percentage === 100) {
-        console.log("➡️ progress=100 → 보고서 직접 조회 실행");
-        fetchingReportRef.current = false; // 새로 조회 허용
-        fetchFinalReport(websiteId, 0);
-      }
+    updateSession({
+      status: dto.stage as SessionStatus,
+      progress: dto.percentage ?? 0,
     });
 
-    es.addEventListener("complete", (event) => {
-      const data = JSON.parse((event as MessageEvent).data) as {
-        websiteId: string;
-        status: string;
-      };
-      console.log("🎉 SSE complete 수신:", data);
+    setStatusLabel(dto.message ?? labelMap[dto.stage as SseStage]);
 
-      fetchingReportRef.current = false; // 새로 조회 허용
+    if (dto.percentage === 100) {
+      fetchingReportRef.current = false;
+      fetchFinalReport(websiteId, 0);
+    }
+  });
+
+
+    es.addEventListener("complete", (event) => {
+      const data = JSON.parse(event.data);
+
+      console.log("🎉 SSE complete:", data);
+
+      fetchingReportRef.current = false;
       fetchFinalReport(data.websiteId, 0);
+
       es.close();
       sseRef.current = null;
     });
 
-    es.onerror = () => {
-      console.warn("⚠️ SSE error");
-    };
+    es.onerror = () => console.warn("⚠ SSE error");
 
     return () => {
       es.close();
       sseRef.current = null;
     };
-    // 🔥 session.clientSessionId 까지만 의존 → 로딩 후 딱 한 번만 실행
   }, [websiteId, session?.clientSessionId]);
 
   // ------------------------------------------------------------------
@@ -212,15 +194,8 @@ export default function ResultClient({
   };
 
   // ------------------------------------------------------------------
-  // UI 렌더링
+  // UI
   // ------------------------------------------------------------------
-  if (!websiteId)
-    return (
-      <main className={styles.container}>
-        <p className={styles.error}>websiteId가 없습니다.</p>
-      </main>
-    );
-
   if (!session)
     return (
       <main className={styles.container}>
@@ -229,7 +204,6 @@ export default function ResultClient({
     );
 
   const isDone = session.status === "DONE";
-  const isError = session.status === "ERROR";
 
   return (
     <main className={styles.container}>
@@ -245,40 +219,36 @@ export default function ResultClient({
 
         <div className={styles.progressWrapper}>
           <div className={styles.progressBarOuter}>
-            <div
-              className={styles.progressBarInner}
-              style={{ width: `${session.progress}%` }}
-            />
+            <div className={styles.progressBarInner} style={{ width: `${session.progress}%` }} />
           </div>
           <span className={styles.progressText}>{session.progress}%</span>
         </div>
-
-        {loading && <p className={styles.info}>서버와 동기화 중…</p>}
-        {sseConnected && !isDone && !isError && (
-          <p className={styles.info}>실시간 분석 진행 중…</p>
-        )}
-        {error && <p className={styles.error}>{error}</p>}
       </section>
 
-      {/* 결과 */}
+      {/* 최종 결과 */}
       {isDone && session.resultJson && (
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>요약 결과</h2>
 
           <div className={styles.summaryBox}>
             <div className={styles.summaryRow}>
-              <span>최종 점수</span>
-              <span>{session.resultJson.results.summary.final_score.toFixed(1)} 점</span>
+              <span>평균 점수</span>
+              <span>{session.resultJson.averageScore?.toFixed(1) ?? "-"}</span>
             </div>
 
             <div className={styles.summaryRow}>
-              <span>중요도</span>
-              <span>{session.resultJson.results.summary.severity_level}</span>
+              <span>전체 수준</span>
+              <span>{session.resultJson.overallLevel}</span>
             </div>
 
             <div className={styles.summaryRow}>
-              <span>접근성 등급</span>
-              <span>{session.resultJson.results.summary.accessibility_level}</span>
+              <span>심각도</span>
+              <span>{session.resultJson.severityLevel}</span>
+            </div>
+
+            <div className={styles.summaryRow}>
+              <span>분석된 URL 수</span>
+              <span>{session.resultJson.totalAnalyzedUrls}</span>
             </div>
           </div>
 

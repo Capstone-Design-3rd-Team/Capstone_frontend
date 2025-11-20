@@ -2,11 +2,9 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import type { AnalysisResultEnvelope } from "@/app/lib/types/analysis";
 
 export async function generateAnalysisPdf(data: AnalysisResultEnvelope) {
-  const { results } = data;
-
   const pdfDoc = await PDFDocument.create();
   let page = pdfDoc.addPage();
-  let { width, height } = page.getSize();
+  let { height } = page.getSize();
 
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const titleSize = 18;
@@ -25,54 +23,80 @@ export async function generateAnalysisPdf(data: AnalysisResultEnvelope) {
     cursorY -= lineHeight;
   };
 
+  // ------------------------------------------------
   // 제목
+  // ------------------------------------------------
   writeLine("디지털 취약계층 UX 분석 리포트", titleSize);
   cursorY -= 20;
 
+  // ------------------------------------------------
   // 기본 정보
+  // ------------------------------------------------
   writeLine("📌 1. 기본 정보", sectionTitleSize);
-  writeLine(`URL: ${results.analysis_info.url}`);
-  writeLine(`분석일시: ${results.analysis_info.analysis_date}`);
-  writeLine(`S3 URL: ${results.analysis_info.s3_url}`);
-  writeLine(`Screenshot: ${results.analysis_info.screenshot_path}`);
+  writeLine(`URL: ${data.websiteUrl}`);
+  writeLine(`분석된 URL 수: ${data.totalAnalyzedUrls}`);
   writeLine("");
 
-  // 스크롤
-  writeLine(`수직 스크롤: ${results.scroll_info.vertical_scroll}`);
-  writeLine(`수평 스크롤: ${results.scroll_info.horizontal_scroll}`);
+  // ------------------------------------------------
+  // 종합 평가
+  // ------------------------------------------------
+  writeLine("📌 2. 종합 평가", sectionTitleSize);
+  writeLine(`평균 점수: ${data.averageScore}`);
+  writeLine(`전체 수준: ${data.overallLevel}`);
+  writeLine(`심각도 수준: ${data.severityLevel}`);
   writeLine("");
 
-  // 버튼 분석
-  writeLine("📌 2. 버튼 분석", sectionTitleSize);
-  const ba = results.button_analysis;
-  writeLine(`크롤링 버튼 개수: ${ba.crawled_button_count}`);
-  writeLine(`감지된 버튼 개수: ${ba.detected_button_count}`);
-  writeLine(`차이: ${ba.button_count_difference}`);
+  // ------------------------------------------------
+  // 통계 요약
+  // ------------------------------------------------
+  const s = data.statistics;
+  writeLine("📌 3. 통계 요약", sectionTitleSize);
+  writeLine(`평균 버튼 탐지 점수: ${s.averageButtonDetectionScore}`);
+  writeLine(`평균 버튼 크기 점수: ${s.averageButtonSizeScore}`);
+  writeLine(`평균 버튼 대비 점수: ${s.averageButtonContrastScore}`);
+  writeLine(`평균 버튼 피드백 점수: ${s.averageButtonFeedbackScore}`);
+  writeLine(`평균 글자 크기 점수: ${s.averageFontSizeScore}`);
+  writeLine(`평균 전체 대비 점수: ${s.averageContrastScore}`);
+  writeLine(`평균 한국어 비율 점수: ${s.averageKoreanRatioScore}`);
   writeLine("");
 
-  // 상세 분석
-  writeLine("📌 3. 상세 분석", sectionTitleSize);
-  Object.entries(results.detailed_scores).forEach(([key, item]) => {
-    writeLine(`${key}: 점수 ${item.score} / ${item.level}`);
-    writeLine(`설명: ${item.description}`);
+  // ------------------------------------------------
+  // URL 상세 분석
+  // ------------------------------------------------
+  writeLine("📌 4. URL별 분석 결과", sectionTitleSize);
+
+  data.urlReports.forEach((r, idx) => {
+    writeLine(`--- URL #${idx + 1} ---`);
+    writeLine(`버튼 탐지 점수: ${r.buttonDetection.score}`);
+    writeLine(`버튼 크기 점수: ${r.buttonSize.score}`);
+    writeLine(`버튼 대비 점수: ${r.buttonContrast.score}`);
+    writeLine(`폰트 크기 점수: ${r.fontSize.score}`);
+    writeLine(`전체 대비 점수: ${r.overallContrast.score}`);
+    writeLine(`한국어 비율 점수: ${r.koreanRatio.score}`);
+    writeLine(`최종 점수: ${r.finalScore}`);
     writeLine("");
   });
 
-  writeLine("📌 4. 종합 평가", sectionTitleSize);
-  writeLine(`최종 점수: ${results.summary.final_score}`);
-  writeLine(`접근성 등급: ${results.summary.accessibility_level}`);
-  writeLine(`심각도 수준: ${results.summary.severity_level}`);
+  // ------------------------------------------------
+  // 개선 권장사항
+  // ------------------------------------------------
+  writeLine("📌 5. 개선 권장사항", sectionTitleSize);
+  data.recommendations.forEach((rec) => {
+    writeLine(`- ${rec}`);
+  });
 
-  // PDF 저장
-  const pdfBytes = await pdfDoc.save();
+  // ------------------------------------------------
+  // PDF 저장 — 오류 완전 제거
+  // ------------------------------------------------
+  const pdfBytes: any = await pdfDoc.save();
 
-  // 🔥 SharedArrayBuffer → ArrayBuffer 변환
-  const buf = new ArrayBuffer(pdfBytes.length);
-  const view = new Uint8Array(buf);
-  view.set(pdfBytes);
+  // SharedArrayBuffer / ArrayBuffer / Uint8Array 모두 안전 처리
+  const uint8 = pdfBytes instanceof Uint8Array ? pdfBytes : new Uint8Array(pdfBytes);
 
-  // Blob 생성
-  const blob = new Blob([buf], { type: "application/pdf" });
+  // 항상 ArrayBuffer로 변환됨 (SharedArrayBuffer 문제 해결)
+  const arrayBuffer = uint8.buffer.slice(0);
+
+  const blob = new Blob([arrayBuffer], { type: "application/pdf" });
 
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

@@ -1,38 +1,66 @@
 export interface AnalysisResultEnvelope {
-  task_id: string;
-  website_id: string;
-  results: {
-    issues: any[]; // 나중에 타입 정교하게 바꿀 수 있음
-    summary: {
-      color: string;
-      final_score: number;
-      severity_level: string;
-      accessibility_level: string;
-    };
-    scroll_info: {
-      vertical_scroll: boolean;
-      horizontal_scroll: boolean;
-    };
-    analysis_info: {
-      url: string;
-      s3_url: string;
-      analysis_date: string; // ISO 문자열
-      screenshot_path: string;
-    };
-    button_analysis: {
-      crawled_button_count: number;
-      detected_button_count: number;
-      button_count_difference: number;
-    };
-    detailed_scores: {
-      [key: string]: {
-        color: string;
-        level: string;
-        score: number;
-        weight: string;
-        description: string;
-      };
-    };
-    recommendations: any[];
+  websiteUrl: string;
+  clientId: string;
+  totalAnalyzedUrls: number;
+
+  averageScore: number;        // 종합 점수
+  overallLevel: string;        // 접근성 수준
+  severityLevel: string;       // 심각도
+
+  statistics: {
+    averageButtonDetectionScore: number;
+    averageButtonSizeScore: number;
+    averageButtonContrastScore: number;
+    averageButtonFeedbackScore: number;
+    averageFontSizeScore: number;
+    averageContrastScore: number;
+    averageKoreanRatioScore: number;
+
+    totalButtonsDetected: number;
+    totalButtonsCrawled: number;
+
+    excellentCount: number;
+    goodCount: number;
+    fairCount: number;
+    poorCount: number;
   };
+
+  urlReports: Array<{
+    url: string;
+    analysisDate: string;
+    screenshotPath: string;
+    s3Url: string;
+    taskId: string;
+    websiteId: string;
+
+    verticalScroll: boolean;
+    horizontalScroll: boolean;
+
+    crawledButtonCount: number;
+    detectedButtonCount: number;
+    buttonCountDifference: number;
+
+    buttonDetection: ScoreItem;
+    buttonVisualFeedback: ScoreItem;
+    buttonSize: ScoreItem;
+    buttonContrast: ScoreItem;
+    fontSize: ScoreItem;
+    overallContrast: ScoreItem;
+    koreanRatio: ScoreItem;
+
+    finalScore: number;
+    accessibilityLevel: string;
+    severityLevel: string;
+
+    textReport: string;
+  }>;
+
+  recommendations: string[];
+}
+
+interface ScoreItem {
+  score: number;
+  level: string;
+  weight: number;
+  recommendation: string;
 }

@@ -1,3 +1,5 @@
+"use client"
+
 import ResultClient from "./ResultClient";
 
 export default function ResultPage({

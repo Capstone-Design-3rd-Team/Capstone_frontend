@@ -11,9 +11,6 @@ import { generateAnalysisPdf } from "./generatePdf";
 
 const API_BASE = "/api-proxy";
 
-// =======================
-// 타입 정의
-// =======================
 type SseStage = "CRAWLING" | "ANALYZING" | "COMPLETED" | "ERROR";
 
 interface SseProgressDto {
@@ -27,9 +24,6 @@ interface SseProgressDto {
 
 type FinalReportDto = AnalysisResultEnvelope;
 
-// =======================
-// 상태 라벨 변환
-// =======================
 const labelMap: Record<SseStage, string> = {
   CRAWLING: "URL 수집 중…",
   ANALYZING: "AI 분석 중…",
@@ -37,9 +31,6 @@ const labelMap: Record<SseStage, string> = {
   ERROR: "오류 발생",
 };
 
-// =======================
-// 메인 컴포넌트
-// =======================
 export default function ResultClient({ websiteId, mainUrl }: { websiteId?: string; mainUrl?: string }) {
   const [session, setSession] = useState<StoredSession | null>(null);
   const [statusLabel, setStatusLabel] = useState("초기화 중…");
@@ -47,16 +38,15 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
   const [sseConnected, setSseConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ----------------------------------------------------------------
+  // -----------------------------
   // 1) 세션 초기화
-  // ----------------------------------------------------------------
+  // -----------------------------
   useEffect(() => {
     if (!websiteId) {
       setError("URL 파라미터에 websiteId가 없습니다.");
       return;
     }
 
-    // localStorage 세션 로드
     const saved = getSession(websiteId);
     if (saved) {
       setSession(saved);
@@ -65,7 +55,6 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
       return;
     }
 
-    // 세션 없으면 새로 생성
     const clientId = window.localStorage.getItem("uxEvalClientId") || "(unknown-client)";
     const newSession: StoredSession = {
       websiteId,
@@ -82,24 +71,18 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
     setLoading(false);
   }, [websiteId, mainUrl]);
 
-  // ----------------------------------------------------------------
-  // 세션 갱신 함수
-  // ----------------------------------------------------------------
   const updateSession = (patch: Partial<StoredSession>) => {
     if (!session) return;
     const updated = { ...session, ...patch };
-
     setSession(updated);
     upsertSession(updated);
   };
 
-  // ----------------------------------------------------------------
+  // -----------------------------
   // 2) SSE 연결
-  // ----------------------------------------------------------------
+  // -----------------------------
   useEffect(() => {
     if (!session) return;
-
-    // 이전 완료 세션이면 SSE 재연결 불필요
     if (session.status === "DONE" && session.resultJson) return;
 
     const clientId = session.clientSessionId;
@@ -108,9 +91,9 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
       return;
     }
 
-    const sseUrl = `https://15.164.29.199/api/sse/connect/${encodeURIComponent(clientId)}`;
+    // 🔥 수정된 SSE 주소: 도메인 기반
+    const sseUrl = `https://www.webaudit.cloud/api/sse/connect/${encodeURIComponent(clientId)}`;
     const es = new EventSource(sseUrl);
-
 
     es.onopen = () => {
       setSseConnected(true);
@@ -122,16 +105,14 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
       setError("SSE 연결 오류가 발생했습니다.");
     };
 
-    // progress
     es.addEventListener("progress", (event) => {
       const dto = JSON.parse((event as MessageEvent).data) as SseProgressDto;
 
       const stage = dto.stage;
       const label = dto.message ?? labelMap[stage];
 
-      // 백엔드 percentage를 그대로 사용 (프론트 계산 금지)
       let progress = 0;
-      if (stage === "CRAWLING") progress = 10; // 크롤링 단계는 특정 퍼센티지 없음
+      if (stage === "CRAWLING") progress = 10;
       if (stage === "ANALYZING") progress = dto.percentage ?? 0;
       if (stage === "COMPLETED") progress = 100;
 
@@ -139,7 +120,6 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
       setStatusLabel(label);
     });
 
-    // complete
     es.addEventListener("complete", (event) => {
       const report = JSON.parse((event as MessageEvent).data) as FinalReportDto;
 
@@ -156,17 +136,17 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
     return () => es.close();
   }, [session]);
 
-  // ----------------------------------------------------------------
+  // -----------------------------
   // PDF 다운로드
-  // ----------------------------------------------------------------
+  // -----------------------------
   const handleDownloadPdf = async () => {
     if (!session?.resultJson) return;
     await generateAnalysisPdf(session.resultJson);
   };
 
-  // ----------------------------------------------------------------
+  // -----------------------------
   // UI 렌더링
-  // ----------------------------------------------------------------
+  // -----------------------------
   if (!websiteId)
     return (
       <main className={styles.container}>
@@ -191,7 +171,6 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
       <h1 className={styles.title}>웹사이트 UX 분석 결과</h1>
       <p className={styles.subtitle}>URL: {session.mainUrl}</p>
 
-      {/* 상태 표시 */}
       <section className={styles.section}>
         <div className={styles.statusRow}>
           <span className={styles.statusLabel}>상태</span>
@@ -218,7 +197,6 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
         {error && <p className={styles.error}>{error}</p>}
       </section>
 
-      {/* 요약 결과 */}
       {session.resultJson && (
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>요약 결과</h2>
@@ -244,7 +222,6 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
         </section>
       )}
 
-      {/* 분석 중 */}
       {!session.resultJson && !isError && (
         <section className={styles.section}>
           <h2>분석 중…</h2>
@@ -252,7 +229,6 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
         </section>
       )}
 
-      {/* 오류 발생 */}
       {isError && (
         <section className={styles.section}>
           <h2>오류 발생</h2>

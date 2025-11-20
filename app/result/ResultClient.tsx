@@ -108,8 +108,9 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
       return;
     }
 
-    const sseUrl = `${API_BASE}/api/sse/connect/${encodeURIComponent(clientId)}`;
+    const sseUrl = `http://15.164.29.199:8080/api/sse/connect/${encodeURIComponent(clientId)}`;
     const es = new EventSource(sseUrl);
+
 
     es.onopen = () => {
       setSseConnected(true);

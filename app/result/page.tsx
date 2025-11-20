@@ -1,25 +1,15 @@
-import { Suspense } from "react";
 import ResultClient from "./ResultClient";
 
-interface ResultPageProps {
-  searchParams?: {
-    websiteId?: string;
-    mainUrl?: string;
-  };
-}
+export default function ResultPage({
+  searchParams,
+}: {
+  searchParams?: { [key: string]: string | undefined };
+}) {
+  const websiteId = searchParams?.websiteId;
+  const mainUrl = searchParams?.mainUrl || "";
 
-export default function ResultPage({ searchParams }: ResultPageProps) {
-  const websiteId =
-    typeof searchParams?.websiteId === "string"
-      ? searchParams.websiteId
-      : undefined;
+  console.log("🔍 [page.tsx] searchParams =", searchParams);
+  console.log("🔍 websiteId =", websiteId, "mainUrl =", mainUrl);
 
-  const mainUrl =
-    typeof searchParams?.mainUrl === "string"
-      ? searchParams.mainUrl
-      : "";
-
-  return (
-      <ResultClient websiteId={websiteId} mainUrl={mainUrl} />
-  );
+  return <ResultClient websiteId={websiteId} mainUrl={mainUrl} />;
 }

@@ -107,10 +107,11 @@
 .helpTitle {
   font-size: 16px;
   font-weight: 600;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 .ol {
   padding-left: 18px;
   font-size: 14px;
+  margin-bottom: 8px;
 }

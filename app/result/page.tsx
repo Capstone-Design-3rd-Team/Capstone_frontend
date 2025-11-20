@@ -20,8 +20,6 @@ export default function ResultPage({ searchParams }: ResultPageProps) {
       : "";
 
   return (
-    <Suspense fallback={<main style={{ padding: 20 }}>결과 페이지를 불러오는 중입니다…</main>}>
       <ResultClient websiteId={websiteId} mainUrl={mainUrl} />
-    </Suspense>
   );
 }

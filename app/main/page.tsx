@@ -166,9 +166,16 @@ export default function MainPage() {
       <section className={styles.helpSection}>
         <h2 className={styles.helpTitle}>어떻게 동작하나요?</h2>
         <ol className={styles.ol}>
-          <li>웹사이트 URL을 입력합니다.</li>
-          <li>분석 시작 버튼을 누르면 백엔드 크롤러가 실행됩니다.</li>
-          <li>결과 페이지에서 실시간 진행상황(SSE)과 PDF 보고서를 확인합니다.</li>
+          <li>-웹사이트 URL을 입력합니다.</li>
+          <li>-분석 시작 버튼을 누르면 백엔드 크롤러가 실행됩니다.</li>
+          <li>-결과 페이지에서 실시간 진행상황(SSE)과 PDF 보고서를 확인합니다.</li>
+        </ol>
+        <h2 className={styles.helpTitle}>분석을 지원하지 않는 사이트</h2>
+        <ol className={styles.ol}>
+          <li>naver.com / daum.net / kakao.com / google.com</li>
+          <li>youtube.com / facebook.com / instagram.com / twitter.com</li>
+          <li>x.com / tistory.com / blog.naver.com / brunch.co.kr</li>
+          <li>위 사이트들은 정보량이 너무 많아 분석을 지원하지 않습니다.</li>
         </ol>
       </section>
     </main>

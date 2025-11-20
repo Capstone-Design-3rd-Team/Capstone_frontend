@@ -1,29 +1,45 @@
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, rgb } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 import type { AnalysisResultEnvelope } from "@/app/lib/types/analysis";
 
 export async function generateAnalysisPdf(data: AnalysisResultEnvelope) {
+  // PDF 생성
   const pdfDoc = await PDFDocument.create();
-  let page = pdfDoc.addPage();
-  let { height } = page.getSize();
 
-  const fontBytes = await fetch("/fonts/NotoSansKR-Regular.ttf").then(res =>
+  // 🔥 fontkit 등록 (TTF 폰트 사용 필수)
+  pdfDoc.registerFontkit(fontkit);
+
+  // 🔥 Next.js public/fonts 기준
+  const fontBytes = await fetch("/fonts/NotoSansKR-Regular.ttf").then((res) =>
     res.arrayBuffer()
   );
-  const font = await pdfDoc.embedFont(fontBytes);
+
+  // 🔥 한글 폰트 임베딩
+  const font = await pdfDoc.embedFont(fontBytes, { subset: true });
+
+  let page = pdfDoc.addPage();
+  let { height } = page.getSize();
 
   const titleSize = 18;
   const textSize = 11;
   const sectionTitleSize = 14;
+  const lineHeight = 18;
 
   let cursorY = height - 50;
-  const lineHeight = 16;
 
+  // 줄쓰기 + 페이지 자동 추가
   const writeLine = (text: string, size = textSize) => {
     if (cursorY < 60) {
       page = pdfDoc.addPage();
       cursorY = height - 50;
     }
-    page.drawText(text, { x: 50, y: cursorY, size, font, color: rgb(0, 0, 0) });
+    page.drawText(text, {
+      x: 50,
+      y: cursorY,
+      size,
+      font,
+      color: rgb(0, 0, 0),
+    });
     cursorY -= lineHeight;
   };
 
@@ -58,7 +74,7 @@ export async function generateAnalysisPdf(data: AnalysisResultEnvelope) {
   writeLine(`평균 버튼 탐지 점수: ${s.averageButtonDetectionScore}`);
   writeLine(`평균 버튼 크기 점수: ${s.averageButtonSizeScore}`);
   writeLine(`평균 버튼 대비 점수: ${s.averageButtonContrastScore}`);
-  writeLine(`평균 버튼 피드백 점수: ${s.averageButtonFeedbackScore}`);
+  writeLine(`평균 피드백 점수: ${s.averageButtonFeedbackScore}`);
   writeLine(`평균 글자 크기 점수: ${s.averageFontSizeScore}`);
   writeLine(`평균 전체 대비 점수: ${s.averageContrastScore}`);
   writeLine(`평균 한국어 비율 점수: ${s.averageKoreanRatioScore}`);
@@ -85,12 +101,10 @@ export async function generateAnalysisPdf(data: AnalysisResultEnvelope) {
   // 개선 권장사항
   // ------------------------------------------------
   writeLine("📌 5. 개선 권장사항", sectionTitleSize);
-  data.recommendations.forEach((rec) => {
-    writeLine(`- ${rec}`);
-  });
+  data.recommendations.forEach((rec) => writeLine(`- ${rec}`));
 
   // ------------------------------------------------
-  // PDF 저장 — 오류 완전 제거
+  // PDF 저장 (SharedArrayBuffer 문제 완벽 제거)
   // ------------------------------------------------
   const pdfBytes: any = await pdfDoc.save();
 

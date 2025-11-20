@@ -1,33 +1,30 @@
 import { PDFDocument, rgb } from "pdf-lib";
-import fontkit from "@pdf-lib/fontkit";
 import type { AnalysisResultEnvelope } from "@/app/lib/types/analysis";
 
 export async function generateAnalysisPdf(data: AnalysisResultEnvelope) {
-  // PDF 생성
+  // PDF 만들기
   const pdfDoc = await PDFDocument.create();
 
-  // 🔥 fontkit 등록 (TTF 폰트 사용 필수)
+  // 🔥 fontkit 로드 (Next.js 클라이언트에서 반드시 dynamic import 사용)
+  const fontkit = await import("@pdf-lib/fontkit").then((m) => m.default);
   pdfDoc.registerFontkit(fontkit);
 
-  // 🔥 Next.js public/fonts 기준
+  // 🔥 웹폰트 로드 (public/fonts 폴더)
   const fontBytes = await fetch("/fonts/NotoSansKR-Regular.ttf").then((res) =>
     res.arrayBuffer()
   );
+  const font = await pdfDoc.embedFont(fontBytes);
 
-  // 🔥 한글 폰트 임베딩
-  const font = await pdfDoc.embedFont(fontBytes, { subset: true });
-
+  // 페이지
   let page = pdfDoc.addPage();
   let { height } = page.getSize();
+  let cursorY = height - 50;
+  const lineHeight = 16;
 
   const titleSize = 18;
   const textSize = 11;
   const sectionTitleSize = 14;
-  const lineHeight = 18;
 
-  let cursorY = height - 50;
-
-  // 줄쓰기 + 페이지 자동 추가
   const writeLine = (text: string, size = textSize) => {
     if (cursorY < 60) {
       page = pdfDoc.addPage();
@@ -43,32 +40,23 @@ export async function generateAnalysisPdf(data: AnalysisResultEnvelope) {
     cursorY -= lineHeight;
   };
 
-  // ------------------------------------------------
-  // 제목
-  // ------------------------------------------------
+  // -------------------------------
+  // PDF 내용 작성
+  // -------------------------------
   writeLine("디지털 취약계층 UX 분석 리포트", titleSize);
   cursorY -= 20;
 
-  // ------------------------------------------------
-  // 기본 정보
-  // ------------------------------------------------
   writeLine("📌 1. 기본 정보", sectionTitleSize);
   writeLine(`URL: ${data.websiteUrl}`);
   writeLine(`분석된 URL 수: ${data.totalAnalyzedUrls}`);
   writeLine("");
 
-  // ------------------------------------------------
-  // 종합 평가
-  // ------------------------------------------------
   writeLine("📌 2. 종합 평가", sectionTitleSize);
   writeLine(`평균 점수: ${data.averageScore}`);
   writeLine(`전체 수준: ${data.overallLevel}`);
   writeLine(`심각도 수준: ${data.severityLevel}`);
   writeLine("");
 
-  // ------------------------------------------------
-  // 통계 요약
-  // ------------------------------------------------
   const s = data.statistics;
   writeLine("📌 3. 통계 요약", sectionTitleSize);
   writeLine(`평균 버튼 탐지 점수: ${s.averageButtonDetectionScore}`);
@@ -80,11 +68,7 @@ export async function generateAnalysisPdf(data: AnalysisResultEnvelope) {
   writeLine(`평균 한국어 비율 점수: ${s.averageKoreanRatioScore}`);
   writeLine("");
 
-  // ------------------------------------------------
-  // URL 상세 분석
-  // ------------------------------------------------
   writeLine("📌 4. URL별 분석 결과", sectionTitleSize);
-
   data.urlReports.forEach((r, idx) => {
     writeLine(`--- URL #${idx + 1} ---`);
     writeLine(`버튼 탐지 점수: ${r.buttonDetection.score}`);
@@ -97,15 +81,12 @@ export async function generateAnalysisPdf(data: AnalysisResultEnvelope) {
     writeLine("");
   });
 
-  // ------------------------------------------------
-  // 개선 권장사항
-  // ------------------------------------------------
   writeLine("📌 5. 개선 권장사항", sectionTitleSize);
   data.recommendations.forEach((rec) => writeLine(`- ${rec}`));
 
-  // ------------------------------------------------
-  // PDF 저장 (SharedArrayBuffer 문제 완벽 제거)
-  // ------------------------------------------------
+  // -------------------------------
+  // PDF 저장
+  // -------------------------------
   const pdfBytes: any = await pdfDoc.save();
 
   // SharedArrayBuffer / ArrayBuffer / Uint8Array 모두 안전 처리

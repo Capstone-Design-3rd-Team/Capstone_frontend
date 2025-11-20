@@ -2,6 +2,22 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  
+  async redirects() {
+  return [
+    {
+      source: "/result",
+      has: [
+        {
+          type: "query",
+          key: "websiteId",
+        },
+      ],
+      destination: "/result",
+      permanent: false,
+    },
+  ];
+  },
 
   async rewrites() {
     return [

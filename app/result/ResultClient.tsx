@@ -23,28 +23,22 @@ type SseStage = keyof typeof labelMap;
 
 interface SseProgressDto {
   stage: SseStage;
-  crawledCount?: number;
-  analyzedCount?: number;
-  totalCount?: number;
   percentage?: number;
   message?: string;
 }
 
-export default function ResultClient({
-  websiteId,
-  mainUrl,
-}: {
-  websiteId?: string;
-  mainUrl?: string;
-}) {
+export default function ResultClient({ websiteId, mainUrl }: { websiteId?: string; mainUrl?: string }) {
   const [session, setSession] = useState<StoredSession | null>(null);
   const [statusLabel, setStatusLabel] = useState("초기화 중…");
   const [loading, setLoading] = useState(true);
   const [sseConnected, setSseConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 🔥 SSE 중복 연결 방지 + 재연결 허용
+  // 🔥 SSE 객체 보관 (중복 연결 방지)
   const sseRef = useRef<EventSource | null>(null);
+
+  // 🔥 보고서 재시도 방지 (중복 fetch 금지)
+  const fetchingReportRef = useRef(false);
 
   // ------------------------------------------------------------------
   // 세션 업데이트
@@ -74,8 +68,7 @@ export default function ResultClient({
       return;
     }
 
-    const clientId =
-      window.localStorage.getItem("uxEvalClientId") || "(unknown-client)";
+    const clientId = window.localStorage.getItem("uxEvalClientId") || "(unknown-client)";
 
     const newSession: StoredSession = {
       websiteId,
@@ -88,21 +81,33 @@ export default function ResultClient({
 
     upsertSession(newSession);
     setSession(newSession);
-
     setStatusLabel("대기 중");
     setLoading(false);
   }, [websiteId, mainUrl]);
 
   // ------------------------------------------------------------------
-  // 2) 최종 보고서 조회 (도메인 직행)
+  // 2) 최종 보고서 조회 (재시도 포함)
   // ------------------------------------------------------------------
-  const fetchFinalReport = async (websiteId: string) => {
+  const fetchFinalReport = async (websiteId: string, retry = 0) => {
+    if (fetchingReportRef.current) return;
+    fetchingReportRef.current = true;
+
     try {
-      console.log("📥 최종 보고서 요청:", websiteId);
+      console.log(`📥 보고서 요청(${retry}) : ${websiteId}`);
 
       const res = await fetch(`https://www.webaudit.cloud/api/reports/${websiteId}`);
 
-      if (!res.ok) throw new Error("보고서 조회 실패");
+      if (!res.ok) {
+        // 404 → DB 반영이 아직 안끝난 경우
+        if (retry < 5) {
+          console.log("⏳ 보고서 없음 → 재시도");
+          fetchingReportRef.current = false;
+          setTimeout(() => fetchFinalReport(websiteId, retry + 1), 1500);
+          return;
+        }
+
+        throw new Error("보고서 조회 실패");
+      }
 
       const finalReport: AnalysisResultEnvelope = await res.json();
 
@@ -121,24 +126,20 @@ export default function ResultClient({
   };
 
   // ------------------------------------------------------------------
-  // 3) SSE 연결 (중복 방지: useRef)
+  // 3) SSE 연결 (중복 방지)
   // ------------------------------------------------------------------
   useEffect(() => {
     if (!session) return;
     if (session.status === "DONE" && session.resultJson) return;
 
     const clientId = session.clientSessionId;
+    if (!clientId) return;
 
-    if (!clientId || clientId === "(unknown-client)") {
-      setError("clientId 없음");
-      return;
-    }
-
-    // 🔥 이미 SSE 연결되어 있으면 재연결 방지
+    // 🔥 이미 연결된 SSE가 있으면 만들지 않음
     if (sseRef.current) return;
 
-    const sseUrl = `https://www.webaudit.cloud/api/sse/connect/${encodeURIComponent(clientId)}`;
-    console.log("🔌 SSE 연결 시도:", sseUrl);
+    const sseUrl = `https://www.webaudit.cloud/api/sse/connect/${clientId}`;
+    console.log("🔌 SSE 연결:", sseUrl);
 
     const es = new EventSource(sseUrl);
     sseRef.current = es;
@@ -150,37 +151,31 @@ export default function ResultClient({
     };
 
     es.onerror = () => {
-      console.warn("⚠️ SSE 오류 발생 (자동 재연결)");
+      console.warn("⚠️ SSE 오류 발생");
     };
 
     es.addEventListener("progress", (event) => {
       const dto = JSON.parse((event as MessageEvent).data) as SseProgressDto;
 
-      updateSession({
-        status: dto.stage as SessionStatus,
-        progress: dto.percentage ?? 0,
-      });
-
+      updateSession({ status: dto.stage as SessionStatus, progress: dto.percentage ?? 0 });
       setStatusLabel(dto.message ?? labelMap[dto.stage]);
 
-      // 🔥 complete 유실 대비
       if (dto.percentage === 100) {
-        console.log("➡️ progress=100 → 보고서 직접 조회 실행");
+        console.log("➡️ progress=100 → 보고서 조회");
         fetchFinalReport(session.websiteId);
       }
     });
 
     es.addEventListener("complete", (event) => {
       const data = JSON.parse((event as MessageEvent).data);
-      console.log("🎉 SSE complete 수신:", data);
+      console.log("🎉 complete 이벤트:", data);
 
       fetchFinalReport(data.websiteId);
       es.close();
+      sseRef.current = null;
     });
 
-    // 페이지 떠날 때만 clean-up
     return () => {
-      console.log("🧹 SSE 연결 종료");
       es.close();
       sseRef.current = null;
     };
@@ -200,7 +195,6 @@ export default function ResultClient({
   if (!websiteId)
     return (
       <main className={styles.container}>
-        <h1>분석 결과</h1>
         <p className={styles.error}>websiteId가 없습니다.</p>
       </main>
     );
@@ -208,7 +202,6 @@ export default function ResultClient({
   if (!session)
     return (
       <main className={styles.container}>
-        <h1>분석 결과</h1>
         <p>세션 로딩 중…</p>
       </main>
     );
@@ -221,40 +214,27 @@ export default function ResultClient({
       <h1 className={styles.title}>웹사이트 UX 분석 결과</h1>
       <p className={styles.subtitle}>URL: {session.mainUrl}</p>
 
-      {/* Progress 영역 */}
+      {/* 상태 표시 */}
       <section className={styles.section}>
         <div className={styles.statusRow}>
           <span className={styles.statusLabel}>상태</span>
-          <span
-            className={[
-              styles.statusBadge,
-              isDone ? styles.statusDone : "",
-              isError ? styles.statusError : "",
-            ].join(" ")}
-          >
-            {statusLabel}
-          </span>
+          <span className={styles.statusBadge}>{statusLabel}</span>
         </div>
 
         <div className={styles.progressWrapper}>
           <div className={styles.progressBarOuter}>
-            <div
-              className={styles.progressBarInner}
-              style={{ width: `${session.progress}%` }}
-            />
+            <div className={styles.progressBarInner} style={{ width: `${session.progress}%` }} />
           </div>
           <span className={styles.progressText}>{session.progress}%</span>
         </div>
 
         {loading && <p className={styles.info}>서버와 동기화 중…</p>}
-        {sseConnected && !isDone && !isError && (
-          <p className={styles.info}>실시간 분석 진행 중…</p>
-        )}
+        {sseConnected && !isDone && !isError && <p className={styles.info}>실시간 분석 진행 중…</p>}
         {error && <p className={styles.error}>{error}</p>}
       </section>
 
-      {/* 최종 결과 */}
-      {session.resultJson && (
+      {/* 결과 */}
+      {isDone && session.resultJson && (
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>요약 결과</h2>
 
@@ -278,20 +258,6 @@ export default function ResultClient({
           <button className={styles.button} onClick={handleDownloadPdf}>
             PDF 다운로드
           </button>
-        </section>
-      )}
-
-      {!session.resultJson && !isError && (
-        <section className={styles.section}>
-          <h2>분석 중…</h2>
-          <p>URL 수집 및 콘텐츠 분석이 진행 중입니다.</p>
-        </section>
-      )}
-
-      {isError && (
-        <section className={styles.section}>
-          <h2>오류 발생</h2>
-          <p>분석 과정에서 오류가 발생했습니다.</p>
         </section>
       )}
     </main>

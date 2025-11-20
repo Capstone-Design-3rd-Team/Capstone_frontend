@@ -9,9 +9,14 @@ import { getSession, upsertSession } from "@/app/lib/session/sessionStorage";
 import type { AnalysisResultEnvelope } from "@/app/lib/types/analysis";
 import { generateAnalysisPdf } from "./generatePdf";
 
-const API_BASE = "/api-proxy";
+const labelMap = {
+  CRAWLING: "URL 수집 중…",
+  ANALYZING: "AI 분석 중…",
+  COMPLETED: "분석 완료",
+  ERROR: "오류 발생",
+} as const;
 
-type SseStage = "CRAWLING" | "ANALYZING" | "COMPLETED" | "ERROR";
+type SseStage = keyof typeof labelMap;
 
 interface SseProgressDto {
   stage: SseStage;
@@ -21,13 +26,6 @@ interface SseProgressDto {
   percentage?: number;
   message?: string;
 }
-
-const labelMap: Record<SseStage, string> = {
-  CRAWLING: "URL 수집 중…",
-  ANALYZING: "AI 분석 중…",
-  COMPLETED: "분석 완료",
-  ERROR: "오류 발생",
-};
 
 export default function ResultClient({
   websiteId,
@@ -42,9 +40,9 @@ export default function ResultClient({
   const [sseConnected, setSseConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ================================
-  // 세션 업데이트 유틸
-  // ================================
+  // ------------------------------------------------------------------
+  // 세션 업데이트
+  // ------------------------------------------------------------------
   const updateSession = (patch: Partial<StoredSession>) => {
     if (!session) return;
     const updated = { ...session, ...patch };
@@ -52,9 +50,9 @@ export default function ResultClient({
     upsertSession(updated);
   };
 
-  // ================================
+  // ------------------------------------------------------------------
   // 1) 초기 세션 로드
-  // ================================
+  // ------------------------------------------------------------------
   useEffect(() => {
     if (!websiteId) {
       setError("URL 파라미터 websiteId 없음");
@@ -65,12 +63,13 @@ export default function ResultClient({
 
     if (saved) {
       setSession(saved);
-      setStatusLabel(labelMap[saved.status as SseStage]);
+      setStatusLabel(labelMap[saved.status as SseStage] ?? "진행 중…");
       setLoading(false);
       return;
     }
 
     const clientId = window.localStorage.getItem("uxEvalClientId") || "(unknown-client)";
+
     const newSession: StoredSession = {
       websiteId,
       mainUrl: mainUrl ?? "",
@@ -82,16 +81,21 @@ export default function ResultClient({
 
     upsertSession(newSession);
     setSession(newSession);
+
     setStatusLabel("대기 중");
     setLoading(false);
   }, [websiteId, mainUrl]);
 
-  // ================================
-  // 2) 최종 보고서 조회 함수
-  // ================================
+  // ------------------------------------------------------------------
+  // 2) 최종 보고서 조회 (도메인 직접)
+  // ------------------------------------------------------------------
   const fetchFinalReport = async (websiteId: string) => {
     try {
-      const res = await fetch(`/api-proxy/api/reports/${websiteId}`);
+      console.log("📥 최종 보고서 요청:", websiteId);
+
+      const res = await fetch(`https://www.webaudit.cloud/api/reports/${websiteId}`, {
+        method: "GET",
+      });
 
       if (!res.ok) throw new Error("보고서 조회 실패");
 
@@ -104,38 +108,43 @@ export default function ResultClient({
       });
 
       setStatusLabel("분석 완료");
+      console.log("📘 최종 보고서 로드 완료");
     } catch (err) {
-      console.error("최종 보고서 조회 중 오류:", err);
+      console.error("❌ 최종 보고서 조회 오류:", err);
       setError("최종 보고서 조회 실패 (재시도 필요)");
     }
   };
 
-  // ================================
+  // ------------------------------------------------------------------
   // 3) SSE 연결
-  // ================================
+  // ------------------------------------------------------------------
   useEffect(() => {
     if (!session) return;
     if (session.status === "DONE" && session.resultJson) return;
 
     const clientId = session.clientSessionId;
+
     if (!clientId || clientId === "(unknown-client)") {
       setError("clientId 없음");
       return;
     }
 
     const sseUrl = `https://www.webaudit.cloud/api/sse/connect/${encodeURIComponent(clientId)}`;
+    console.log("🔌 SSE 연결 시도:", sseUrl);
+
     const es = new EventSource(sseUrl);
 
     es.onopen = () => {
+      console.log("🔌 SSE 연결됨");
       setSseConnected(true);
       setLoading(false);
     };
 
     es.onerror = () => {
-      console.warn("SSE 오류");
+      console.warn("⚠️ SSE 오류 발생");
     };
 
-    // progress 이벤트
+    // progress 수신
     es.addEventListener("progress", (event) => {
       const dto = JSON.parse((event as MessageEvent).data) as SseProgressDto;
 
@@ -146,17 +155,16 @@ export default function ResultClient({
 
       setStatusLabel(dto.message ?? labelMap[dto.stage]);
 
-      // SSE complete가 유실될 대비
+      // complete 신호가 누락될 경우 대비
       if (dto.percentage === 100) {
+        console.log("➡️ progress=100 → 보고서 직접 조회 실행");
         fetchFinalReport(session.websiteId);
       }
     });
 
-    // complete 이벤트 (신호만 받음)
     es.addEventListener("complete", (event) => {
       const data = JSON.parse((event as MessageEvent).data);
-
-      console.log("완료 신호 수신:", data);
+      console.log("🎉 SSE complete 수신:", data);
 
       fetchFinalReport(data.websiteId);
       es.close();
@@ -165,17 +173,17 @@ export default function ResultClient({
     return () => es.close();
   }, [session]);
 
-  // ================================
+  // ------------------------------------------------------------------
   // PDF 다운로드
-  // ================================
+  // ------------------------------------------------------------------
   const handleDownloadPdf = async () => {
     if (!session?.resultJson) return;
     await generateAnalysisPdf(session.resultJson);
   };
 
-  // ================================
+  // ------------------------------------------------------------------
   // UI 렌더링
-  // ================================
+  // ------------------------------------------------------------------
   if (!websiteId) {
     return (
       <main className={styles.container}>
@@ -233,7 +241,7 @@ export default function ResultClient({
         {error && <p className={styles.error}>{error}</p>}
       </section>
 
-      {/* 최종 결과 */}
+      {/* 결과 */}
       {session.resultJson && (
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>요약 결과</h2>
@@ -243,10 +251,12 @@ export default function ResultClient({
               <span>최종 점수</span>
               <span>{session.resultJson.results.summary.final_score.toFixed(1)} 점</span>
             </div>
+
             <div className={styles.summaryRow}>
               <span>중요도</span>
               <span>{session.resultJson.results.summary.severity_level}</span>
             </div>
+
             <div className={styles.summaryRow}>
               <span>접근성 등급</span>
               <span>{session.resultJson.results.summary.accessibility_level}</span>

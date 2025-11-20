@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styles from "./page.module.css";
 
 import type { StoredSession, SessionStatus } from "@/app/lib/session/sessionTypes";
@@ -42,7 +42,9 @@ export default function ResultClient({
   const [loading, setLoading] = useState(true);
   const [sseConnected, setSseConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sseStarted, setSseStarted] = useState(false); // 🔥 중복 실행 방지 핵심
+
+  // 🔥 SSE 중복 연결 방지 + 재연결 허용
+  const sseRef = useRef<EventSource | null>(null);
 
   // ------------------------------------------------------------------
   // 세션 업데이트
@@ -86,12 +88,13 @@ export default function ResultClient({
 
     upsertSession(newSession);
     setSession(newSession);
+
     setStatusLabel("대기 중");
     setLoading(false);
   }, [websiteId, mainUrl]);
 
   // ------------------------------------------------------------------
-  // 2) 최종 보고서 조회 (도메인 직접)
+  // 2) 최종 보고서 조회 (도메인 직행)
   // ------------------------------------------------------------------
   const fetchFinalReport = async (websiteId: string) => {
     try {
@@ -118,27 +121,27 @@ export default function ResultClient({
   };
 
   // ------------------------------------------------------------------
-  // 3) SSE 연결 (중복 방지 + 안정화)
+  // 3) SSE 연결 (중복 방지: useRef)
   // ------------------------------------------------------------------
   useEffect(() => {
     if (!session) return;
     if (session.status === "DONE" && session.resultJson) return;
 
-    // 🔥 이미 SSE 실행한 적 있으면 return → 중복 방지!
-    if (sseStarted) return;
-
     const clientId = session.clientSessionId;
+
     if (!clientId || clientId === "(unknown-client)") {
       setError("clientId 없음");
       return;
     }
 
-    setSseStarted(true); // SSE는 단 한 번만 실행
+    // 🔥 이미 SSE 연결되어 있으면 재연결 방지
+    if (sseRef.current) return;
 
     const sseUrl = `https://www.webaudit.cloud/api/sse/connect/${encodeURIComponent(clientId)}`;
     console.log("🔌 SSE 연결 시도:", sseUrl);
 
     const es = new EventSource(sseUrl);
+    sseRef.current = es;
 
     es.onopen = () => {
       console.log("🔌 SSE 연결됨");
@@ -147,7 +150,7 @@ export default function ResultClient({
     };
 
     es.onerror = () => {
-      console.warn("⚠️ SSE 오류 발생");
+      console.warn("⚠️ SSE 오류 발생 (자동 재연결)");
     };
 
     es.addEventListener("progress", (event) => {
@@ -160,6 +163,7 @@ export default function ResultClient({
 
       setStatusLabel(dto.message ?? labelMap[dto.stage]);
 
+      // 🔥 complete 유실 대비
       if (dto.percentage === 100) {
         console.log("➡️ progress=100 → 보고서 직접 조회 실행");
         fetchFinalReport(session.websiteId);
@@ -174,8 +178,13 @@ export default function ResultClient({
       es.close();
     });
 
-    return () => es.close();
-  }, [session, sseStarted]);
+    // 페이지 떠날 때만 clean-up
+    return () => {
+      console.log("🧹 SSE 연결 종료");
+      es.close();
+      sseRef.current = null;
+    };
+  }, [session]);
 
   // ------------------------------------------------------------------
   // PDF 다운로드

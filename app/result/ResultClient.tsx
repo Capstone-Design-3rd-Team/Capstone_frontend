@@ -9,15 +9,13 @@ import { getSession, upsertSession } from "@/app/lib/session/sessionStorage";
 import type { AnalysisResultEnvelope } from "@/app/lib/types/analysis";
 import { generateAnalysisPdf } from "./generatePdf";
 
-// ===== 프록시 기반 서버 주소 =====
-// Vercel 배포 시 /api-proxy 로 자동 대체됨.
+// ===== 서버 URL =====
 const API_BASE = "/api-proxy";
-const MOCK_MODE = false; 
+const MOCK_MODE = false;
 
-
-// ─────────────────────────────────────────────────────────────
-// Swagger 기반 타입
-// ─────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────
+// 타입 정의
+// ──────────────────────────────────────────
 type SseStage = "CRAWLING" | "ANALYZING" | "COMPLETED" | "ERROR";
 
 interface SseProgressDto {
@@ -31,10 +29,7 @@ interface SseProgressDto {
 
 type FinalReportDto = AnalysisResultEnvelope;
 
-
-// ─────────────────────────────────────────────────────────────
-// 상태 변환 함수
-// ─────────────────────────────────────────────────────────────
+// 상태 라벨 변환
 function labelFor(status: SessionStatus): string {
   switch (status) {
     case "PENDING":
@@ -50,13 +45,11 @@ function labelFor(status: SessionStatus): string {
   }
 }
 
-function mapStageToProgress(dto: SseProgressDto): {
-  status: SessionStatus;
-  progress: number;
-  label: string;
-} {
+function mapStageToProgress(dto: SseProgressDto) {
+  console.log("📡 [SSE] Progress DTO:", dto);
+
   const stage = dto.stage;
-  const baseMessage = dto.message ?? "";
+  const message = dto.message ?? "";
 
   if (stage === "CRAWLING") {
     let progress = 20;
@@ -64,66 +57,57 @@ function mapStageToProgress(dto: SseProgressDto): {
       const ratio = dto.crawledCount / dto.totalCount;
       progress = 10 + Math.min(40, Math.round(ratio * 40));
     }
-    return {
-      status: "RUNNING",
-      progress,
-      label: baseMessage || "URL 수집 중…",
-    };
+    return { status: "RUNNING" as SessionStatus, progress, label: message || "URL 수집 중…" };
   }
 
   if (stage === "ANALYZING") {
     const p = dto.percentage ?? 50;
     const progress = Math.max(40, Math.min(99, p));
-    return {
-      status: "RUNNING",
-      progress,
-      label: baseMessage || `분석 중… ${progress}%`,
-    };
+    return { status: "RUNNING" as SessionStatus, progress, label: message || `분석 중… ${progress}%` };
   }
 
   if (stage === "COMPLETED") {
-    return {
-      status: "DONE",
-      progress: 100,
-      label: baseMessage || "분석 완료",
-    };
+    return { status: "DONE" as SessionStatus, progress: 100, label: message || "분석 완료" };
   }
 
   if (stage === "ERROR") {
-    return {
-      status: "ERROR",
-      progress: 100,
-      label: baseMessage || "오류 발생",
-    };
+    return { status: "ERROR" as SessionStatus, progress: 100, label: message || "오류 발생" };
   }
 
-  // 🔥 stage 값이 잘못 와도 status는 고정값만
-  return {
-    status: "RUNNING",
-    progress: 10,
-    label: baseMessage || "진행 중…",
-  };
+  return { status: "RUNNING" as SessionStatus, progress: 10, label: message || "진행 중…" };
 }
 
-
-
-// ─────────────────────────────────────────────────────────────
-// ResultClient 컴포넌트
-// ─────────────────────────────────────────────────────────────
-export default function ResultClient({ websiteId, mainUrl }: { websiteId?: string; mainUrl?: string; }) {
+// ──────────────────────────────────────────
+// ResultClient
+// ──────────────────────────────────────────
+export default function ResultClient({
+  websiteId,
+  mainUrl,
+}: {
+  websiteId?: string;
+  mainUrl?: string;
+}) {
   const [session, setSession] = useState<StoredSession | null>(null);
   const [statusLabel, setStatusLabel] = useState("초기화 중…");
   const [loading, setLoading] = useState(true);
   const [sseConnected, setSseConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ---------------------------
+  // -----------------------------
   // 1) 세션 초기화
-  // ---------------------------
+  // -----------------------------
   useEffect(() => {
-    if (!websiteId) return;
+    console.log("🔍 [ResultPage] websiteId =", websiteId, "mainUrl =", mainUrl);
+
+    if (!websiteId) {
+      console.warn("⚠️ websiteId가 없음 → result 페이지가 제대로 호출되지 않았습니다.");
+      setError("URL 파라미터에 websiteId가 없습니다.");
+      return;
+    }
 
     const saved = getSession(websiteId);
+    console.log("🔍 [localStorage] Loaded session =", saved);
+
     if (saved) {
       setSession(saved);
       setStatusLabel(labelFor(saved.status));
@@ -131,7 +115,9 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
       return;
     }
 
+    // 메인에서 넘어온 세션이 없을 때
     const clientId = window.localStorage.getItem("uxEvalClientId") || "(unknown-client)";
+    console.log("🆕 Creating new session — clientId =", clientId);
 
     const newSession: StoredSession = {
       websiteId,
@@ -144,70 +130,84 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
 
     upsertSession(newSession);
     setSession(newSession);
+
     setStatusLabel("대기 중");
     setLoading(false);
   }, [websiteId, mainUrl]);
 
-
+  // 세션 업데이트
   const updateSession = (patch: Partial<StoredSession>) => {
     if (!session) return;
-    const obj = { ...session, ...patch };
-    setSession(obj);
-    upsertSession(obj);
+    const updated = { ...session, ...patch };
+    console.log("📝 [Session Update]", updated);
+
+    setSession(updated);
+    upsertSession(updated);
   };
 
-
-  // ---------------------------
+  // -----------------------------
   // 2) SSE 연결
-  // ---------------------------
+  // -----------------------------
   useEffect(() => {
     if (!session) return;
 
-    // 이미 완료되었다면 연결 불필요
-    if (session.status === "DONE" && session.resultJson) return;
+    console.log("📡 [SSE INIT] Session =", session);
+
+    if (session.status === "DONE" && session.resultJson) {
+      console.log("📡 Already completed result exists → SSE 연결 안 함");
+      return;
+    }
 
     const clientId = session.clientSessionId;
     if (!clientId || clientId === "(unknown-client)") {
+      console.error("❌ clientId가 없어 SSE 연결 불가");
       setError("clientId를 찾을 수 없습니다.");
       return;
     }
 
-    setError(null);
-    setLoading(true);
-
-    // 🔥 SSE 주소도 /api-proxy 경유
     const sseUrl = `${API_BASE}/api/sse/connect/${encodeURIComponent(clientId)}`;
+    console.log("📡 [SSE CONNECT] URL =", sseUrl);
+
+    setLoading(true);
 
     const es = new EventSource(sseUrl);
 
     es.onopen = () => {
+      console.log("📡 [SSE OPEN] 연결됨");
       setSseConnected(true);
       setLoading(false);
     };
 
     es.onerror = (e) => {
-      console.error("SSE Error:", e);
+      console.error("❌ [SSE ERROR]", e);
       setError("SSE 연결 오류가 발생했습니다.");
       es.close();
     };
 
     // progress 이벤트
     es.addEventListener("progress", (event) => {
+      console.log("📡 [SSE EVENT: progress]", event);
+
       try {
         const dto = JSON.parse((event as MessageEvent).data) as SseProgressDto;
         const mapped = mapStageToProgress(dto);
 
+        console.log("📡 [PROGRESS UPDATE]", mapped);
+
         updateSession({ status: mapped.status, progress: mapped.progress });
         setStatusLabel(mapped.label);
       } catch (err) {
-        console.error("parse error", err);
+        console.error("❌ [Progress JSON Parse Error]", err);
       }
     });
 
-    // complete 이벤트 = 최종 분석 결과
+    // complete 이벤트
     es.addEventListener("complete", (event) => {
+      console.log("📡 [SSE EVENT: complete]", event);
+
       try {
         const report = JSON.parse((event as MessageEvent).data) as FinalReportDto;
+        console.log("📘 [FINAL REPORT RECEIVED]", report);
 
         updateSession({
           status: "DONE",
@@ -218,30 +218,34 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
         setStatusLabel("분석 완료");
         es.close();
       } catch (err) {
-        console.error("complete parse error", err);
+        console.error("❌ [Complete JSON Parse Error]", err);
       }
     });
 
-    return () => es.close();
+    return () => {
+      console.log("📡 [SSE CLOSED]");
+      es.close();
+    };
   }, [session]);
 
-
-  // ---------------------------
+  // -----------------------------
   // 3) PDF 다운로드
-  // ---------------------------
+  // -----------------------------
   const handleDownloadPdf = async () => {
     if (!session?.resultJson) return;
+    console.log("📄 [PDF] Generating PDF…", session.resultJson);
+
     try {
-      await generateAnalysisPdf(session.resultJson as AnalysisResultEnvelope);
-    } catch {
+      await generateAnalysisPdf(session.resultJson);
+    } catch (e) {
+      console.error("❌ PDF Error:", e);
       setError("PDF 생성 중 오류가 발생했습니다.");
     }
   };
 
-
-  // ---------------------------
+  // -----------------------------
   // 4) UI 렌더링
-  // ---------------------------
+  // -----------------------------
   if (!websiteId)
     return (
       <main className={styles.container}>
@@ -258,7 +262,6 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
       </main>
     );
 
-
   const done = session.status === "DONE";
   const err = session.status === "ERROR";
 
@@ -272,11 +275,13 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
       <section className={styles.section}>
         <div className={styles.statusRow}>
           <span className={styles.statusLabel}>상태</span>
-          <span className={[
-            styles.statusBadge,
-            done ? styles.statusDone : "",
-            err ? styles.statusError : ""
-          ].join(" ")}>
+          <span
+            className={[
+              styles.statusBadge,
+              done ? styles.statusDone : "",
+              err ? styles.statusError : "",
+            ].join(" ")}
+          >
             {statusLabel}
           </span>
         </div>
@@ -285,20 +290,15 @@ export default function ResultClient({ websiteId, mainUrl }: { websiteId?: strin
           <div className={styles.progressBarOuter}>
             <div className={styles.progressBarInner} style={{ width: `${session.progress}%` }} />
           </div>
-          <span className={styles.progressText}>
-            {session.progress.toFixed(0)}%
-          </span>
+          <span className={styles.progressText}>{session.progress.toFixed(0)}%</span>
         </div>
 
         {loading && <p className={styles.info}>서버와 동기화 중…</p>}
-        {sseConnected && !done && !err && (
-          <p className={styles.info}>실시간 분석 진행 중…</p>
-        )}
+        {sseConnected && !done && !err && <p className={styles.info}>실시간 분석 진행 중…</p>}
         {error && <p className={styles.error}>{error}</p>}
       </section>
 
-
-      {/* 결과 표시 */}
+      {/* 요약 결과 */}
       {session.resultJson && (
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>요약 결과</h2>

@@ -25,7 +25,7 @@ export default function MainPage() {
 
   const [clientId, setClientId] = useState<string>("");
 
-  // 🔥 1. clientId 로딩 또는 생성
+  // 🔥 1) 클라이언트ID 생성 / 로드
   useEffect(() => {
     let storedId = window.localStorage.getItem("uxEvalClientId");
     if (!storedId) {
@@ -44,6 +44,7 @@ export default function MainPage() {
       setError("URL을 입력해 주세요.");
       return;
     }
+
     if (!clientId) {
       setError("clientId를 생성하지 못했습니다.");
       return;
@@ -54,29 +55,41 @@ export default function MainPage() {
 
       const baseUrl = "/api-proxy";
 
-      if (!baseUrl) {
-        setError("백엔드 주소(NEXT_PUBLIC_API_BASE_URL)가 설정되어 있지 않습니다.");
-        return;
-      }
+      console.log("📡 [POST] start crawl");
+      console.log("➡️ Request:", { clientId, mainUrl: url });
 
-      // 🔥 2. Swagger 규격대로 clientId 포함하여 요청
       const res = await fetch(`${baseUrl}/api/websites/crawl`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          clientId,       // <-- 중요
-          mainUrl: url,   // <-- 중요
+          clientId,
+          mainUrl: url,
         }),
       });
 
-      if (!res.ok) {
-        const text = await res.text();
-        console.error("crawl 실패:", text);
-        setError("크롤링 시작 요청에 실패했습니다.");
+      console.log("📡 Response status:", res.status);
+
+      // ------- 백엔드 응답 원문 로깅 -------
+      const rawText = await res.text();
+      console.log("📡 rawText:", rawText);
+
+      let data: CrawlStartResponse;
+
+      // ------- JSON 안전 파싱 -------
+      try {
+        data = JSON.parse(rawText);
+        console.log("📡 parsed JSON:", data);
+      } catch (err) {
+        console.error("❌ JSON parse error:", err);
+        setError("백엔드가 올바른 JSON을 반환하지 않았습니다.");
         return;
       }
 
-      const data: CrawlStartResponse = await res.json();
+      // ------- 상태 검사 -------
+      if (!res.ok) {
+        setError(data.message || "크롤링 시작 요청 실패");
+        return;
+      }
 
       if (!data.websiteId) {
         setError(data.message || "websiteId를 받지 못했습니다.");
@@ -85,7 +98,7 @@ export default function MainPage() {
 
       setInfoMessage(data.message || "크롤링이 시작되었습니다.");
 
-      // 🔥 3. 세션 저장 (result 페이지 복구 지원)
+      // 🔥 3) 세션 저장
       const newSession: StoredSession = {
         websiteId: data.websiteId,
         mainUrl: data.mainUrl,
@@ -97,14 +110,15 @@ export default function MainPage() {
       };
       upsertSession(newSession);
 
-      // 🔥 4. result 페이지로 이동
+      // 🔥 4) 결과 페이지 이동
       router.push(
         `/result?websiteId=${data.websiteId}&mainUrl=${encodeURIComponent(
           data.mainUrl
         )}`
       );
+
     } catch (err) {
-      console.error(err);
+      console.error("❌ Fetch Error:", err);
       setError("서버와 통신 중 오류가 발생했습니다.");
       return;
     } finally {
@@ -134,7 +148,7 @@ export default function MainPage() {
           />
         </label>
 
-        {/* 🔥 버튼 2개 적용 */}
+        {/* 버튼 2개 */}
         <div className={styles.buttonRow}>
           <button type="submit" className={styles.buttonPrimary} disabled={loading}>
             {loading ? "크롤링 시작 중..." : "분석 시작"}

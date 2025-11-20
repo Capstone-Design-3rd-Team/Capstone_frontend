@@ -25,7 +25,7 @@ export default function MainPage() {
 
   const [clientId, setClientId] = useState<string>("");
 
-  // 🔥 1) 클라이언트ID 생성 / 로드
+  // 클라이언트 ID 생성
   useEffect(() => {
     let storedId = window.localStorage.getItem("uxEvalClientId");
     if (!storedId) {
@@ -46,19 +46,14 @@ export default function MainPage() {
     }
 
     if (!clientId) {
-      setError("clientId를 생성하지 못했습니다.");
+      setError("clientId 생성 실패");
       return;
     }
 
     try {
       setLoading(true);
 
-      const baseUrl = "/api-proxy";
-
-      console.log("📡 [POST] start crawl");
-      console.log("➡️ Request:", { clientId, mainUrl: url });
-
-      const res = await fetch(`${baseUrl}/api/websites/crawl`, {
+      const res = await fetch("/api-proxy/api/websites/crawl", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -67,38 +62,21 @@ export default function MainPage() {
         }),
       });
 
-      console.log("📡 Response status:", res.status);
-
-      // ------- 백엔드 응답 원문 로깅 -------
-      const rawText = await res.text();
-      console.log("📡 rawText:", rawText);
-
+      const raw = await res.text();
       let data: CrawlStartResponse;
 
-      // ------- JSON 안전 파싱 -------
       try {
-        data = JSON.parse(rawText);
-        console.log("📡 parsed JSON:", data);
-      } catch (err) {
-        console.error("❌ JSON parse error:", err);
-        setError("백엔드가 올바른 JSON을 반환하지 않았습니다.");
+        data = JSON.parse(raw);
+      } catch {
+        setError("백엔드 응답이 잘못되었습니다.");
         return;
       }
 
-      // ------- 상태 검사 -------
-      if (!res.ok) {
-        setError(data.message || "크롤링 시작 요청 실패");
+      if (!res.ok || !data.websiteId) {
+        setError(data.message || "크롤링 요청 실패");
         return;
       }
 
-      if (!data.websiteId) {
-        setError(data.message || "websiteId를 받지 못했습니다.");
-        return;
-      }
-
-      setInfoMessage(data.message || "크롤링이 시작되었습니다.");
-
-      // 🔥 3) 세션 저장
       const newSession: StoredSession = {
         websiteId: data.websiteId,
         mainUrl: data.mainUrl,
@@ -110,17 +88,13 @@ export default function MainPage() {
       };
       upsertSession(newSession);
 
-      // 🔥 4) 결과 페이지 이동
       router.push(
         `/result?websiteId=${data.websiteId}&mainUrl=${encodeURIComponent(
           data.mainUrl
         )}`
       );
-
     } catch (err) {
-      console.error("❌ Fetch Error:", err);
-      setError("서버와 통신 중 오류가 발생했습니다.");
-      return;
+      setError("서버와 연결할 수 없습니다.");
     } finally {
       setLoading(false);
     }
@@ -131,31 +105,34 @@ export default function MainPage() {
       <h1 className={styles.title}>웹사이트 UX 평가 시작하기</h1>
 
       <p className={styles.description}>
-        평가하고 싶은 웹사이트 주소(URL)를 입력하면,
-        서버에서 크롤링을 시작하고 디지털 취약계층 가이드라인 기준으로 분석합니다.
+        분석하고 싶은 웹사이트 주소(URL)를 입력하면 서버에서 자동으로 크롤링하고,  
+        디지털 취약계층 UX 가이드라인 기준으로 평가합니다.
       </p>
 
       <form onSubmit={handleSubmit} className={styles.form}>
         <label className={styles.label}>
-          웹사이트 주소(URL) 입력
+          웹사이트 URL 입력
           <input
             className={styles.input}
             type="url"
+            placeholder="https://example.com"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://example.com"
             required
           />
         </label>
 
-        {/* 버튼 2개 */}
         <div className={styles.buttonRow}>
-          <button type="submit" className={styles.buttonPrimary} disabled={loading}>
-            {loading ? "크롤링 시작 중..." : "분석 시작"}
+          <button
+            type="submit"
+            className={styles.buttonPrimary}
+            disabled={loading}
+          >
+            {loading ? "크롤링 중..." : "분석 시작"}
           </button>
 
           <Link href="/guideline" className={styles.buttonSecondary}>
-            가이드라인 보러가기
+            가이드라인 보기
           </Link>
         </div>
       </form>
@@ -165,18 +142,19 @@ export default function MainPage() {
 
       <section className={styles.helpSection}>
         <h2 className={styles.helpTitle}>어떻게 동작하나요?</h2>
-        <ol className={styles.ol}>
-          <li>-웹사이트 URL을 입력합니다.</li>
-          <li>-분석 시작 버튼을 누르면 백엔드 크롤러가 실행됩니다.</li>
-          <li>-결과 페이지에서 실시간 진행상황과 PDF 보고서를 확인합니다.</li>
-        </ol>
+        <ul className={styles.ul}>
+          <li>웹사이트 URL을 입력합니다.</li>
+          <li>“분석 시작” 버튼을 누르면 서버에서 크롤링이 시작됩니다.</li>
+          <li>결과 페이지에서 실시간 진행률과 최종 분석 리포트를 확인합니다.</li>
+        </ul>
+
         <h2 className={styles.helpTitle}>분석을 지원하지 않는 사이트</h2>
-        <ol className={styles.ol}>
-          <li>naver.com / daum.net / kakao.com / google.com</li>
-          <li>youtube.com / facebook.com / instagram.com / twitter.com</li>
-          <li>x.com / tistory.com / blog.naver.com / brunch.co.kr</li>
-          <li>위 사이트들은 정보량이 너무 많아 분석을 지원하지 않습니다.</li>
-        </ol>
+        <ul className={styles.ul}>
+          <li>naver / daum / kakao / google</li>
+          <li>youtube / facebook / instagram / twitter</li>
+          <li>x.com / tistory / blog.naver / brunch</li>
+          <li>해당 사이트들은 정보량이 너무 많아 분석을 지원하지 않습니다.</li>
+        </ul>
       </section>
     </main>
   );

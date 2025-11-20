@@ -9,6 +9,9 @@ import { getSession, upsertSession } from "@/app/lib/session/sessionStorage";
 import type { AnalysisResultEnvelope } from "@/app/lib/types/analysis";
 import { generateAnalysisPdf } from "./generatePdf";
 
+// -------------------------------
+// LABELS
+// -------------------------------
 const labelMap = {
   CRAWLING: "URL 수집 중…",
   ANALYZING: "AI 분석 중…",
@@ -39,6 +42,7 @@ export default function ResultClient({
   const [loading, setLoading] = useState(true);
   const [sseConnected, setSseConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sseStarted, setSseStarted] = useState(false); // 🔥 중복 실행 방지 핵심
 
   // ------------------------------------------------------------------
   // 세션 업데이트
@@ -68,7 +72,8 @@ export default function ResultClient({
       return;
     }
 
-    const clientId = window.localStorage.getItem("uxEvalClientId") || "(unknown-client)";
+    const clientId =
+      window.localStorage.getItem("uxEvalClientId") || "(unknown-client)";
 
     const newSession: StoredSession = {
       websiteId,
@@ -81,7 +86,6 @@ export default function ResultClient({
 
     upsertSession(newSession);
     setSession(newSession);
-
     setStatusLabel("대기 중");
     setLoading(false);
   }, [websiteId, mainUrl]);
@@ -93,9 +97,7 @@ export default function ResultClient({
     try {
       console.log("📥 최종 보고서 요청:", websiteId);
 
-      const res = await fetch(`https://www.webaudit.cloud/api/reports/${websiteId}`, {
-        method: "GET",
-      });
+      const res = await fetch(`https://www.webaudit.cloud/api/reports/${websiteId}`);
 
       if (!res.ok) throw new Error("보고서 조회 실패");
 
@@ -116,18 +118,22 @@ export default function ResultClient({
   };
 
   // ------------------------------------------------------------------
-  // 3) SSE 연결
+  // 3) SSE 연결 (중복 방지 + 안정화)
   // ------------------------------------------------------------------
   useEffect(() => {
     if (!session) return;
     if (session.status === "DONE" && session.resultJson) return;
 
-    const clientId = session.clientSessionId;
+    // 🔥 이미 SSE 실행한 적 있으면 return → 중복 방지!
+    if (sseStarted) return;
 
+    const clientId = session.clientSessionId;
     if (!clientId || clientId === "(unknown-client)") {
       setError("clientId 없음");
       return;
     }
+
+    setSseStarted(true); // SSE는 단 한 번만 실행
 
     const sseUrl = `https://www.webaudit.cloud/api/sse/connect/${encodeURIComponent(clientId)}`;
     console.log("🔌 SSE 연결 시도:", sseUrl);
@@ -144,7 +150,6 @@ export default function ResultClient({
       console.warn("⚠️ SSE 오류 발생");
     };
 
-    // progress 수신
     es.addEventListener("progress", (event) => {
       const dto = JSON.parse((event as MessageEvent).data) as SseProgressDto;
 
@@ -155,7 +160,6 @@ export default function ResultClient({
 
       setStatusLabel(dto.message ?? labelMap[dto.stage]);
 
-      // complete 신호가 누락될 경우 대비
       if (dto.percentage === 100) {
         console.log("➡️ progress=100 → 보고서 직접 조회 실행");
         fetchFinalReport(session.websiteId);
@@ -171,7 +175,7 @@ export default function ResultClient({
     });
 
     return () => es.close();
-  }, [session]);
+  }, [session, sseStarted]);
 
   // ------------------------------------------------------------------
   // PDF 다운로드
@@ -184,14 +188,13 @@ export default function ResultClient({
   // ------------------------------------------------------------------
   // UI 렌더링
   // ------------------------------------------------------------------
-  if (!websiteId) {
+  if (!websiteId)
     return (
       <main className={styles.container}>
         <h1>분석 결과</h1>
         <p className={styles.error}>websiteId가 없습니다.</p>
       </main>
     );
-  }
 
   if (!session)
     return (
@@ -209,7 +212,7 @@ export default function ResultClient({
       <h1 className={styles.title}>웹사이트 UX 분석 결과</h1>
       <p className={styles.subtitle}>URL: {session.mainUrl}</p>
 
-      {/* 상태 표시 */}
+      {/* Progress 영역 */}
       <section className={styles.section}>
         <div className={styles.statusRow}>
           <span className={styles.statusLabel}>상태</span>
@@ -241,7 +244,7 @@ export default function ResultClient({
         {error && <p className={styles.error}>{error}</p>}
       </section>
 
-      {/* 결과 */}
+      {/* 최종 결과 */}
       {session.resultJson && (
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>요약 결과</h2>

@@ -6,7 +6,11 @@ export async function generateAnalysisPdf(data: AnalysisResultEnvelope) {
   let page = pdfDoc.addPage();
   let { height } = page.getSize();
 
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontBytes = await fetch("/fonts/NotoSansKR-Regular.ttf").then(res =>
+    res.arrayBuffer()
+  );
+  const font = await pdfDoc.embedFont(fontBytes);
+
   const titleSize = 18;
   const textSize = 11;
   const sectionTitleSize = 14;

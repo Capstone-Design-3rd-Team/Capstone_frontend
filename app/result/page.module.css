@@ -1,3 +1,6 @@
+/* ---------------------------
+   Container
+--------------------------- */
 .container {
   max-width: 760px;
   margin: 0 auto;
@@ -6,10 +9,15 @@
   line-height: 1.6;
 }
 
+/* ---------------------------
+   Title
+--------------------------- */
 .title {
   font-size: 26px;
   font-weight: 700;
   margin-bottom: 8px;
+  border-left: 4px solid #747CED;
+  padding-left: 10px;
 }
 
 .subtitle {
@@ -18,6 +26,9 @@
   margin-bottom: 4px;
 }
 
+/* ---------------------------
+   Sections
+--------------------------- */
 .section {
   margin-top: 24px;
   padding-top: 16px;
@@ -28,8 +39,13 @@
   font-size: 16px;
   font-weight: 600;
   margin-bottom: 10px;
+  border-left: 4px solid #747CED;
+  padding-left: 8px;
 }
 
+/* ---------------------------
+   Status & Badges
+--------------------------- */
 .statusRow {
   display: flex;
   align-items: center;
@@ -51,8 +67,9 @@
 }
 
 .statusDone {
-  background-color: #e6f6ec;
-  color: #1b7f3c;
+  background-color: #ebeaff; /* 연보라톤 배경 */
+  color: #5b60d8;
+  font-weight: 600;
 }
 
 .statusError {
@@ -60,6 +77,9 @@
   color: #c0392b;
 }
 
+/* ---------------------------
+   Progress Bar
+--------------------------- */
 .progressWrapper {
   display: flex;
   align-items: center;
@@ -70,14 +90,14 @@
   flex: 1;
   height: 8px;
   border-radius: 999px;
-  background-color: #f0f0f0;
+  background-color: #e7e7e7;
   overflow: hidden;
 }
 
 .progressBarInner {
   height: 100%;
   border-radius: 999px;
-  background-color: #222;
+  background-color: #747CED; /* 강조색 적용 */
   width: 0;
   transition: width 0.3s ease;
 }
@@ -89,11 +109,15 @@
   text-align: right;
 }
 
+/* ---------------------------
+   Summary Box
+--------------------------- */
 .summaryBox {
-  border: 1px solid #eee;
+  border: 1px solid #e0e0ff; /* 약한 보라 톤 */
   border-radius: 10px;
   padding: 12px 14px;
   margin-bottom: 14px;
+  background: #fbfbff;
 }
 
 .summaryRow {
@@ -112,22 +136,36 @@
   font-weight: 600;
 }
 
+/* ---------------------------
+   Button
+--------------------------- */
 .button {
   display: inline-block;
   margin-top: 8px;
   padding: 10px 18px;
   border-radius: 999px;
   border: none;
-  background-color: #111;
+  background-color: #747CED; /* 강조색 */
   color: #fff;
   font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .button:hover {
-  opacity: 0.9;
+  background-color: #6066de; /* hover */
+  transform: translateY(-1px);
 }
 
+.button:active {
+  background-color: #5258c7;
+  transform: scale(0.97);
+}
+
+/* ---------------------------
+   Text
+--------------------------- */
 .error {
   margin-top: 8px;
   font-size: 13px;

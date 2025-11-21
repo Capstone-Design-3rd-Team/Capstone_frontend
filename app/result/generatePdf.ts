@@ -2,20 +2,18 @@ import { PDFDocument, rgb } from "pdf-lib";
 import type { AnalysisResultEnvelope } from "@/app/lib/types/analysis";
 
 export async function generateAnalysisPdf(data: AnalysisResultEnvelope) {
-  // PDF 만들기
   const pdfDoc = await PDFDocument.create();
 
-  // 🔥 fontkit 로드 (Next.js 클라이언트에서 반드시 dynamic import 사용)
+  // fontkit 로드
   const fontkit = await import("@pdf-lib/fontkit").then((m) => m.default);
   pdfDoc.registerFontkit(fontkit);
 
-  // 🔥 웹폰트 로드 (public/fonts 폴더)
+  // 웹폰트 로드
   const fontBytes = await fetch("/fonts/NotoSansKR-Regular.ttf").then((res) =>
     res.arrayBuffer()
   );
   const font = await pdfDoc.embedFont(fontBytes);
 
-  // 페이지
   let page = pdfDoc.addPage();
   let { height } = page.getSize();
   let cursorY = height - 50;
@@ -47,7 +45,7 @@ export async function generateAnalysisPdf(data: AnalysisResultEnvelope) {
   cursorY -= 20;
 
   writeLine("📌 1. 기본 정보", sectionTitleSize);
-  writeLine(`URL: ${data.websiteUrl}`);
+  writeLine(`웹사이트 URL: ${data.websiteUrl}`);
   writeLine(`분석된 URL 수: ${data.totalAnalyzedUrls}`);
   writeLine("");
 
@@ -68,9 +66,15 @@ export async function generateAnalysisPdf(data: AnalysisResultEnvelope) {
   writeLine(`평균 한국어 비율 점수: ${s.averageKoreanRatioScore}`);
   writeLine("");
 
+  // -------------------------------
+  // 🚀 URL 리포트 출력 (이 부분 변경됨)
+  // -------------------------------
   writeLine("📌 4. URL별 분석 결과", sectionTitleSize);
+
   data.urlReports.forEach((r, idx) => {
-    writeLine(`--- URL #${idx + 1} ---`);
+    // URL 제목을 실제 URL 포함한 형태로 출력
+    writeLine(`--- URL #${idx + 1}: ${r.url} ---`, sectionTitleSize);
+
     writeLine(`버튼 탐지 점수: ${r.buttonDetection.score}`);
     writeLine(`버튼 크기 점수: ${r.buttonSize.score}`);
     writeLine(`버튼 대비 점수: ${r.buttonContrast.score}`);
@@ -81,6 +85,9 @@ export async function generateAnalysisPdf(data: AnalysisResultEnvelope) {
     writeLine("");
   });
 
+  // -------------------------------
+  // 개선 권장사항
+  // -------------------------------
   writeLine("📌 5. 개선 권장사항", sectionTitleSize);
   data.recommendations.forEach((rec) => writeLine(`- ${rec}`));
 
@@ -88,11 +95,7 @@ export async function generateAnalysisPdf(data: AnalysisResultEnvelope) {
   // PDF 저장
   // -------------------------------
   const pdfBytes: any = await pdfDoc.save();
-
-  // SharedArrayBuffer / ArrayBuffer / Uint8Array 모두 안전 처리
   const uint8 = pdfBytes instanceof Uint8Array ? pdfBytes : new Uint8Array(pdfBytes);
-
-  // 항상 ArrayBuffer로 변환됨 (SharedArrayBuffer 문제 해결)
   const arrayBuffer = uint8.buffer.slice(0);
 
   const blob = new Blob([arrayBuffer], { type: "application/pdf" });

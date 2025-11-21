@@ -105,7 +105,7 @@ export default function MainPage() {
       <h1 className={styles.title}>웹사이트 UX 평가 시작하기</h1>
 
       <p className={styles.description}>
-        분석하고 싶은 웹사이트 주소(URL)를 입력하면 서버에서 자동으로 크롤링하고,  
+        분석하고 싶은 웹사이트 주소(URL)를 입력하면 서버에서 자동으로 크롤링하고,<br></br>  
         디지털 취약계층 UX 가이드라인 기준으로 평가합니다.
       </p>
 
